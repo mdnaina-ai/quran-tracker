@@ -65,9 +65,8 @@ class SimpleDatabase {
 
     async logReading(pages, notes = '') {
         const today = new Date().toISOString().split('T')[0];
-        const currentPage = parseInt(this.data.current_page || 1);
-        const startPage = currentPage;
-        const endPage = currentPage + pages - 1;
+        const startPage = parseInt(this.data.current_page || 1);
+        const endPage = startPage + pages; // Next page to read after this batch
 
         // Create action record for undo
         const action = {
@@ -87,7 +86,7 @@ class SimpleDatabase {
         const reading = {
             date: today,
             start_page: this.data.readings[existingIndex]?.start_page || startPage,
-            end_page: endPage,
+            end_page: endPage - 1, // Last page actually read
             pages_read: (this.data.readings[existingIndex]?.pages_read || 0) + pages,
             completed: true,
             notes: notes,
@@ -118,7 +117,7 @@ class SimpleDatabase {
         const lastAction = this.data.actions[lastActionIndex];
 
         if (lastAction.type === 'add') {
-            // Reverse an add action
+            // Reverse an add action - restore to the page before this action
             const today = lastAction.date;
             const todayIndex = this.data.readings.findIndex(r => r.date === today);
             
@@ -127,7 +126,7 @@ class SimpleDatabase {
                 
                 // Decrease the reading by the action's page count
                 reading.pages_read -= lastAction.pages;
-                reading.end_page -= lastAction.pages;
+                reading.end_page = lastAction.from_page - 1; // Go back to before this action
                 reading.updated_at = new Date().toISOString();
                 
                 // If no pages left, remove the reading entry
@@ -136,8 +135,8 @@ class SimpleDatabase {
                     this.data.last_read_date = null;
                 }
                 
-                // Update current page
-                this.data.current_page = Math.max(1, this.data.current_page - lastAction.pages);
+                // Restore current page to where it was before this action
+                this.data.current_page = lastAction.from_page;
             }
         } else if (lastAction.type === 'decrease') {
             // Reverse a decrease action (add the pages back)
@@ -186,8 +185,18 @@ class SimpleDatabase {
             // Remove entire entry if decreasing by all or more
             const removed = reading.pages_read;
             this.data.readings.splice(todayIndex, 1);
-            this.data.current_page = Math.max(1, this.data.current_page - removed);
+            this.data.current_page = reading.start_page; // Go back to start
             this.data.last_read_date = null;
+            
+            // Add decrease action
+            this.data.actions.push({
+                id: Date.now(),
+                type: 'decrease',
+                date: today,
+                pages: removed,
+                timestamp: new Date().toISOString()
+            });
+            
             this.save();
             return { 
                 success: true, 
@@ -202,7 +211,7 @@ class SimpleDatabase {
         reading.updated_at = new Date().toISOString();
         
         // Update current page
-        this.data.current_page = Math.max(1, this.data.current_page - pages);
+        this.data.current_page -= pages;
         
         // Also add a negative action for tracking
         this.data.actions.push({
