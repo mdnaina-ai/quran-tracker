@@ -240,16 +240,23 @@ app.post('/api/reminder', async (req, res) => {
     }
 });
 
-// Undo last reading (today's entry)
+// Undo last action (step by step)
 app.post('/api/undo', async (req, res) => {
     try {
-        const result = db.undoLastReading();
+        const result = db.undoLastAction();
         
         if (result.success) {
             const progress = await db.getProgress();
+            let message = '';
+            if (result.undone.type === 'add') {
+                message = `Undid ${result.undone.pages} pages added`;
+            } else if (result.undone.type === 'decrease') {
+                message = `Restored ${result.undone.pages} pages removed`;
+            }
             res.json({
                 success: true,
-                message: `Undid ${result.pages_removed} pages`,
+                message: message,
+                undone: result.undone,
                 current_page: result.current_page,
                 progress
             });

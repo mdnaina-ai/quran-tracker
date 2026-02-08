@@ -467,8 +467,6 @@
         }
 
         async function undoLast() {
-            if (!confirm('Undo last reading?')) return;
-            
             try {
                 const res = await fetch(`${API_BASE}/api/undo`, {
                     method: 'POST',

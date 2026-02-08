@@ -28,6 +28,7 @@ class SimpleDatabase {
                 ramadan_year: 2026,
                 last_read_date: null,
                 readings: [],
+                actions: [], // Individual action history for step-by-step undo
                 goal: {
                     year: 2026,
                     start_date: '2026-02-17',
@@ -36,6 +37,11 @@ class SimpleDatabase {
                     target_pages: 604
                 }
             };
+            this.save();
+        }
+        // Ensure actions array exists for existing databases
+        if (!this.data.actions) {
+            this.data.actions = [];
             this.save();
         }
     }
@@ -63,68 +69,109 @@ class SimpleDatabase {
         const startPage = currentPage;
         const endPage = currentPage + pages - 1;
 
+        // Create action record for undo
+        const action = {
+            id: Date.now(),
+            type: 'add',
+            date: today,
+            pages: pages,
+            from_page: startPage,
+            to_page: endPage,
+            timestamp: new Date().toISOString()
+        };
+        this.data.actions.push(action);
+
         // Check if already logged today
         const existingIndex = this.data.readings.findIndex(r => r.date === today);
         
         const reading = {
             date: today,
-            start_page: startPage,
+            start_page: this.data.readings[existingIndex]?.start_page || startPage,
             end_page: endPage,
-            pages_read: pages,
+            pages_read: (this.data.readings[existingIndex]?.pages_read || 0) + pages,
             completed: true,
             notes: notes,
-            updated_at: new Date().toISOString(),
-            id: Date.now() // unique ID for undo
+            updated_at: new Date().toISOString()
         };
 
         if (existingIndex >= 0) {
-            // Update existing
-            const existing = this.data.readings[existingIndex];
-            reading.pages_read += existing.pages_read;
-            reading.start_page = existing.start_page;
-            reading.end_page = existing.end_page + pages;
-            reading.id = existing.id; // keep same ID
             this.data.readings[existingIndex] = reading;
         } else {
             this.data.readings.push(reading);
         }
 
-        this.data.current_page = reading.end_page;
+        this.data.current_page = endPage;
         this.data.last_read_date = today;
         this.save();
 
-        return reading;
+        return { ...reading, action_id: action.id };
     }
 
-    // Undo last reading (for today)
-    undoLastReading() {
-        const today = new Date().toISOString().split('T')[0];
-        const todayIndex = this.data.readings.findIndex(r => r.date === today);
-        
-        if (todayIndex < 0) {
-            return { success: false, error: 'No reading today to undo' };
+    // Undo the last action only (step by step)
+    undoLastAction() {
+        if (this.data.actions.length === 0) {
+            return { success: false, error: 'No actions to undo' };
         }
 
-        const todayReading = this.data.readings[todayIndex];
-        const pagesToRemove = todayReading.pages_read;
-        
-        // Remove today's reading
-        this.data.readings.splice(todayIndex, 1);
-        
-        // Update current page
-        this.data.current_page = Math.max(1, todayReading.start_page);
-        this.data.last_read_date = null;
-        
+        // Get last action
+        const lastActionIndex = this.data.actions.length - 1;
+        const lastAction = this.data.actions[lastActionIndex];
+
+        if (lastAction.type === 'add') {
+            // Reverse an add action
+            const today = lastAction.date;
+            const todayIndex = this.data.readings.findIndex(r => r.date === today);
+            
+            if (todayIndex >= 0) {
+                const reading = this.data.readings[todayIndex];
+                
+                // Decrease the reading by the action's page count
+                reading.pages_read -= lastAction.pages;
+                reading.end_page -= lastAction.pages;
+                reading.updated_at = new Date().toISOString();
+                
+                // If no pages left, remove the reading entry
+                if (reading.pages_read <= 0) {
+                    this.data.readings.splice(todayIndex, 1);
+                    this.data.last_read_date = null;
+                }
+                
+                // Update current page
+                this.data.current_page = Math.max(1, this.data.current_page - lastAction.pages);
+            }
+        } else if (lastAction.type === 'decrease') {
+            // Reverse a decrease action (add the pages back)
+            const today = lastAction.date;
+            const todayIndex = this.data.readings.findIndex(r => r.date === today);
+            
+            if (todayIndex >= 0) {
+                const reading = this.data.readings[todayIndex];
+                reading.pages_read += lastAction.pages;
+                reading.end_page += lastAction.pages;
+                reading.updated_at = new Date().toISOString();
+                this.data.current_page += lastAction.pages;
+            }
+        }
+
+        // Remove the action from history
+        this.data.actions.splice(lastActionIndex, 1);
         this.save();
-        
+
         return { 
             success: true, 
-            pages_removed: pagesToRemove,
+            undone: lastAction,
+            pages_removed: lastAction.type === 'add' ? lastAction.pages : 0,
+            pages_restored: lastAction.type === 'decrease' ? lastAction.pages : 0,
             current_page: this.data.current_page
         };
     }
 
-    // Decrease pages for today (partial undo)
+    // Get last few actions for display
+    getRecentActions(limit = 5) {
+        return this.data.actions.slice(-limit).reverse();
+    }
+
+    // Decrease pages for today (manual adjustment)
     decreasePages(pages) {
         const today = new Date().toISOString().split('T')[0];
         const todayIndex = this.data.readings.findIndex(r => r.date === today);
@@ -137,7 +184,16 @@ class SimpleDatabase {
         
         if (reading.pages_read <= pages) {
             // Remove entire entry if decreasing by all or more
-            return this.undoLastReading();
+            const removed = reading.pages_read;
+            this.data.readings.splice(todayIndex, 1);
+            this.data.current_page = Math.max(1, this.data.current_page - removed);
+            this.data.last_read_date = null;
+            this.save();
+            return { 
+                success: true, 
+                pages_removed: removed,
+                current_page: this.data.current_page
+            };
         }
 
         // Decrease pages
@@ -146,7 +202,16 @@ class SimpleDatabase {
         reading.updated_at = new Date().toISOString();
         
         // Update current page
-        this.data.current_page = reading.end_page;
+        this.data.current_page = Math.max(1, this.data.current_page - pages);
+        
+        // Also add a negative action for tracking
+        this.data.actions.push({
+            id: Date.now(),
+            type: 'decrease',
+            date: today,
+            pages: pages,
+            timestamp: new Date().toISOString()
+        });
         
         this.save();
         
@@ -234,6 +299,7 @@ class SimpleDatabase {
         const streak = this.getStreak();
         const todayReading = this.getTodayReading();
         const needed = this.getNeededPerDay();
+        const recentActions = this.getRecentActions(3);
         
         return {
             current_page: currentPage,
@@ -248,7 +314,8 @@ class SimpleDatabase {
             needed_per_day: needed.needed_per_day,
             days_left: needed.days_left,
             ramadan_start: goal.start_date,
-            ramadan_end: goal.end_date
+            ramadan_end: goal.end_date,
+            recent_actions: recentActions
         };
     }
 
