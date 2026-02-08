@@ -1,5 +1,7 @@
 const express = require('express');
 const bodyParser = require('body-parser');
+const path = require('path');
+const fs = require('fs');
 const Database = require('./database-simple');
 const { exec } = require('child_process');
 
@@ -17,14 +19,26 @@ app.use((req, res, next) => {
     next();
 });
 
-// Health check
+// Serve static files from public directory
+const publicDir = path.join(__dirname, 'public');
+if (fs.existsSync(publicDir)) {
+    app.use('/ui', express.static(publicDir));
+}
+
+// Root redirect to UI
 app.get('/', (req, res) => {
-    res.json({
-        status: 'ok',
-        service: 'quran-tracker',
-        version: '1.0.0',
-        mode: 'json-db'
-    });
+    const indexPath = path.join(__dirname, 'public', 'index.html');
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.json({
+            status: 'ok',
+            service: 'quran-tracker',
+            version: '1.0.0',
+            mode: 'json-db',
+            ui: '/ui'
+        });
+    }
 });
 
 // Get full progress
