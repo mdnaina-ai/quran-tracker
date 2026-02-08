@@ -1,0 +1,14 @@
+{
+  "name": "quran-tracker",
+  "version": "1.0.0",
+  "description": "Local Quran reading tracker for Ramadan - JSON-based (Termux compatible)",
+  "main": "server-simple.js",
+  "scripts": {
+    "start": "node server-simple.js",
+    "dev": "node server-simple.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "body-parser": "^1.20.2"
+  }
+}
