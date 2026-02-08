@@ -240,6 +240,61 @@ app.post('/api/reminder', async (req, res) => {
     }
 });
 
+// Undo last reading (today's entry)
+app.post('/api/undo', async (req, res) => {
+    try {
+        const result = db.undoLastReading();
+        
+        if (result.success) {
+            const progress = await db.getProgress();
+            res.json({
+                success: true,
+                message: `Undid ${result.pages_removed} pages`,
+                current_page: result.current_page,
+                progress
+            });
+        } else {
+            res.status(400).json({
+                success: false,
+                error: result.error
+            });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Decrease pages for today
+app.post('/api/decrease', async (req, res) => {
+    try {
+        const { pages } = req.body;
+        
+        if (!pages || pages < 1) {
+            return res.status(400).json({ error: 'Pages must be >= 1' });
+        }
+        
+        const result = db.decreasePages(parseInt(pages));
+        
+        if (result.success) {
+            const progress = await db.getProgress();
+            res.json({
+                success: true,
+                message: `Decreased by ${result.pages_decreased || result.pages_removed} pages`,
+                current_page: result.current_page,
+                remaining_today: result.remaining_today,
+                progress
+            });
+        } else {
+            res.status(400).json({
+                success: false,
+                error: result.error
+            });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Helper: Send notification
 function sendNotification(title, content) {
     const cmd = `termux-notification --title "${title}" --content "${content}" --priority high`;

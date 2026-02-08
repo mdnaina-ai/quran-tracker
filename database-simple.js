@@ -73,7 +73,8 @@ class SimpleDatabase {
             pages_read: pages,
             completed: true,
             notes: notes,
-            updated_at: new Date().toISOString()
+            updated_at: new Date().toISOString(),
+            id: Date.now() // unique ID for undo
         };
 
         if (existingIndex >= 0) {
@@ -82,6 +83,7 @@ class SimpleDatabase {
             reading.pages_read += existing.pages_read;
             reading.start_page = existing.start_page;
             reading.end_page = existing.end_page + pages;
+            reading.id = existing.id; // keep same ID
             this.data.readings[existingIndex] = reading;
         } else {
             this.data.readings.push(reading);
@@ -92,6 +94,68 @@ class SimpleDatabase {
         this.save();
 
         return reading;
+    }
+
+    // Undo last reading (for today)
+    undoLastReading() {
+        const today = new Date().toISOString().split('T')[0];
+        const todayIndex = this.data.readings.findIndex(r => r.date === today);
+        
+        if (todayIndex < 0) {
+            return { success: false, error: 'No reading today to undo' };
+        }
+
+        const todayReading = this.data.readings[todayIndex];
+        const pagesToRemove = todayReading.pages_read;
+        
+        // Remove today's reading
+        this.data.readings.splice(todayIndex, 1);
+        
+        // Update current page
+        this.data.current_page = Math.max(1, todayReading.start_page);
+        this.data.last_read_date = null;
+        
+        this.save();
+        
+        return { 
+            success: true, 
+            pages_removed: pagesToRemove,
+            current_page: this.data.current_page
+        };
+    }
+
+    // Decrease pages for today (partial undo)
+    decreasePages(pages) {
+        const today = new Date().toISOString().split('T')[0];
+        const todayIndex = this.data.readings.findIndex(r => r.date === today);
+        
+        if (todayIndex < 0) {
+            return { success: false, error: 'No reading today' };
+        }
+
+        const reading = this.data.readings[todayIndex];
+        
+        if (reading.pages_read <= pages) {
+            // Remove entire entry if decreasing by all or more
+            return this.undoLastReading();
+        }
+
+        // Decrease pages
+        reading.pages_read -= pages;
+        reading.end_page -= pages;
+        reading.updated_at = new Date().toISOString();
+        
+        // Update current page
+        this.data.current_page = reading.end_page;
+        
+        this.save();
+        
+        return { 
+            success: true, 
+            pages_decreased: pages,
+            remaining_today: reading.pages_read,
+            current_page: this.data.current_page
+        };
     }
 
     getTodayReading() {

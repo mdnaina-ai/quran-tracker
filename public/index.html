@@ -157,6 +157,54 @@
             border: 2px solid #4ecca3;
             color: #4ecca3;
         }
+
+        /* Undo Actions */
+        .undo-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .btn-undo, .btn-decrease {
+            background: rgba(231, 76, 60, 0.2);
+            border: 2px solid #e74c3c;
+            color: #e74c3c;
+        }
+
+        .btn-undo:active, .btn-decrease:active {
+            background: rgba(231, 76, 60, 0.3);
+        }
+
+        /* Decrease Input */
+        .decrease-input {
+            display: none;
+            background: rgba(231, 76, 60, 0.1);
+            border: 2px solid #e74c3c;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 15px;
+        }
+
+        .decrease-input.active {
+            display: block;
+        }
+
+        .decrease-input input {
+            width: 100%;
+            padding: 15px;
+            font-size: 1.2rem;
+            border: 2px solid #e74c3c;
+            border-radius: 10px;
+            background: transparent;
+            color: #fff;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        .decrease-input input:focus {
+            outline: none;
+        }
         
         /* Custom Input */
         .custom-input {
@@ -351,11 +399,22 @@
                     <button class="btn" onclick="logPages(10)">+10</button>
                     <button class="btn btn-custom" onclick="toggleCustom()">Custom Amount</button>
                 </div>
-                
+
                 <div class="custom-input" id="customInput">
                     <input type="number" id="customPages" placeholder="Enter pages..." min="1">
                     <button class="btn" onclick="logCustom()">Log Pages</button>
                     <button class="btn btn-secondary" onclick="toggleCustom()">Cancel</button>
+                </div>
+
+                <div class="undo-actions">
+                    <button class="btn btn-undo" onclick="undoLast()">↩️ Undo Last</button>
+                    <button class="btn btn-decrease" onclick="toggleDecrease()">➖ Decrease</button>
+                </div>
+
+                <div class="decrease-input" id="decreaseInput">
+                    <input type="number" id="decreasePages" placeholder="Pages to remove..." min="1">
+                    <button class="btn" onclick="decreaseCustom()">Remove Pages</button>
+                    <button class="btn btn-secondary" onclick="toggleDecrease()">Cancel</button>
                 </div>
                 
                 <div class="analysis">
@@ -401,6 +460,58 @@
         
         function toggleCustom() {
             document.getElementById('customInput').classList.toggle('active');
+        }
+
+        function toggleDecrease() {
+            document.getElementById('decreaseInput').classList.toggle('active');
+        }
+
+        async function undoLast() {
+            if (!confirm('Undo last reading?')) return;
+            
+            try {
+                const res = await fetch(`${API_BASE}/api/undo`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    showToast(`↩️ ${data.message}`);
+                    loadData();
+                } else {
+                    showToast('❌ ' + (data.error || 'Undo failed'), true);
+                }
+            } catch (err) {
+                showToast('❌ Error: ' + err.message, true);
+            }
+        }
+
+        async function decreaseCustom() {
+            const pages = parseInt(document.getElementById('decreasePages').value);
+            if (!pages || pages < 1) {
+                showToast('❌ Please enter valid number', true);
+                return;
+            }
+            
+            try {
+                const res = await fetch(`${API_BASE}/api/decrease`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pages })
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    showToast(`➖ ${data.message}`);
+                    toggleDecrease();
+                    loadData();
+                } else {
+                    showToast('❌ ' + (data.error || 'Decrease failed'), true);
+                }
+            } catch (err) {
+                showToast('❌ Error: ' + err.message, true);
+            }
         }
         
         async function logPages(pages) {
