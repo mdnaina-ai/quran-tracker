@@ -314,6 +314,77 @@ function sendNotification(title, content) {
     });
 }
 
+// Load Quran page lookup
+const PAGE_LOOKUP = JSON.parse(fs.readFileSync(path.join(__dirname, 'quran_page_lookup.json'), 'utf8'));
+
+// Generate deep link for a page
+app.get('/api/deeplink/:page', async (req, res) => {
+    try {
+        const page = parseInt(req.params.page);
+        
+        if (page < 1 || page > 604) {
+            return res.status(400).json({ error: 'Page must be between 1 and 604' });
+        }
+        
+        const mapping = PAGE_LOOKUP[page.toString()];
+        if (!mapping) {
+            return res.status(404).json({ error: 'Page mapping not found' });
+        }
+        
+        const deeplink = `quran://${mapping.surah}/${mapping.ayah}`;
+        
+        res.json({
+            page,
+            surah: mapping.surah,
+            ayah: mapping.ayah,
+            deeplink,
+            android_intent: `am start -a android.intent.action.VIEW -d '${deeplink}'`
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Open page in Quran app (requires Termux)
+app.post('/api/open/:page', async (req, res) => {
+    try {
+        const page = parseInt(req.params.page);
+        
+        if (page < 1 || page > 604) {
+            return res.status(400).json({ error: 'Page must be between 1 and 604' });
+        }
+        
+        const mapping = PAGE_LOOKUP[page.toString()];
+        if (!mapping) {
+            return res.status(404).json({ error: 'Page mapping not found' });
+        }
+        
+        const deeplink = `quran://${mapping.surah}/${mapping.ayah}`;
+        const cmd = `am start -a android.intent.action.VIEW -d '${deeplink}' -f 0x10008000`;
+        
+        exec(cmd, (err, stdout, stderr) => {
+            if (err) {
+                res.status(500).json({ 
+                    error: 'Failed to open Quran app', 
+                    details: err.message,
+                    deeplink 
+                });
+            } else {
+                res.json({
+                    success: true,
+                    page,
+                    surah: mapping.surah,
+                    ayah: mapping.ayah,
+                    deeplink,
+                    message: `Opened page ${page} (Surah ${mapping.surah}, Ayah ${mapping.ayah})`
+                });
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔═══════════════════════════════════════════════════╗
