@@ -372,6 +372,9 @@
                         <div class="progress-fill" style="width: ${progress.percent}%"></div>
                     </div>
                     <div class="percent">${progress.percent}% Complete</div>
+                    <button class="btn btn-quran" onclick="openInQuranApp()" style="margin-top: 15px; background: #4ecca3; color: #1a1a2e;">
+                        📖 Open in Quran App
+                    </button>
                 </div>
                 
                 <div class="stats-grid">
@@ -479,6 +482,32 @@
                     loadData();
                 } else {
                     showToast('❌ ' + (data.error || 'Undo failed'), true);
+                }
+            } catch (err) {
+                showToast('❌ Error: ' + err.message, true);
+            }
+        }
+        
+        async function openInQuranApp() {
+            try {
+                // Get current progress first
+                const progressRes = await fetch(`${API_BASE}/api/progress`);
+                const progress = await progressRes.json();
+                const currentPage = progress.current_page;
+                
+                showToast(`📖 Opening page ${currentPage} in Quran app...`);
+                
+                // Call the open endpoint
+                const res = await fetch(`${API_BASE}/api/open/${currentPage}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    showToast(`✅ Opened ${data.deeplink}`);
+                } else {
+                    showToast('❌ ' + (data.error || 'Failed to open'), true);
                 }
             } catch (err) {
                 showToast('❌ Error: ' + err.message, true);
